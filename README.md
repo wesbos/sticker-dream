@@ -53,6 +53,10 @@ While any printer will work, I'm using a 4x6 thermal printer with 4x6 shipping l
 
 Theoretically a bluetooth printer will work as well, but I have not tested. I'd love to get this working with these cheap Niimbot / Bluetooth "Cat printer", though those labels are plastic and not colour-able.
 
+## Tips
+
+The image prints right away, which is magical. Sometimes you can goof up. In this case, simply say "CANCEL", "ABORT" or "START OVER" as part of your recording.
+
 ## Ideas
 
 It would be great if this was more portable. That app has 2 pieces: Client and Server. The TTS happens on the client. The Gemini API calls and printing happens on the server.

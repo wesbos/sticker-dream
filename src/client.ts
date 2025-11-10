@@ -75,10 +75,18 @@ async function resetRecorder() {
     console.log(output);
     recordBtn.textContent = "Dreaming Up...";
 
-    // Automatically generate and print
-    if(text && !text.includes('BLANK')) {
-      await generateAndPrint(text);
+    const abortWords = ["BLANK", "NO IMAGE", "NO STICKER", "CANCEL", "ABORT", "START OVER"];
+    if(!text || abortWords.some(word => text.toUpperCase().includes(word))) {
+      transcriptDiv.textContent = "No image generated.";
+      recordBtn.classList.remove("loading");
+      recordBtn.textContent = "Cancelled";
+      setTimeout(() => {
+        recordBtn.textContent = "Sticker Dream";
+      }, 1000);
+      resetRecorder();
+      return;
     }
+
     recordBtn.textContent = "Sending to Printer...";
     await wait(3000);
     recordBtn.textContent = "Printing...";
@@ -108,7 +116,7 @@ recordBtn.addEventListener("pointerdown", async () => {
   mediaRecorder.start();
   console.log(`Media recorder started`);
   recordBtn.classList.add("recording");
-  recordBtn.textContent = "🎤";
+  recordBtn.textContent = "Listening...";
 
   // Auto-stop after 5 seconds
   recordingTimeout = window.setTimeout(() => {
