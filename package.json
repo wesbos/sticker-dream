@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "server": "node --env-file=.env --watch src/server.ts"
+    "server": "node --experimental-strip-types --env-file=.env --watch src/server.ts"
   },
   "keywords": [],
   "author": "Wes Bos (https://wesbos.com)",
