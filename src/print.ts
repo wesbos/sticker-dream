@@ -334,24 +334,13 @@ async function printImageWindows(
   imagePath: string,
   options: PrintOptions = {}
 ): Promise<string> {
-  // Convert path for Windows if needed - use the actual temp file path
-  const windowsPath = imagePath.startsWith("/tmp/")
-    ? imagePath.replace("/tmp/", "C:\\temp\\")
-    : imagePath.replace(/\//g, "\\");
-
-  // Create the temp directory if it doesn't exist
-  try {
-    const tempDir = "C:\\temp";
-    await execAsync(`mkdir "${tempDir}" 2>nul || echo "Directory exists"`);
-  } catch (error) {
-    // Ignore errors, directory might already exist
-  }
-
   // Copy image file to Windows temp location for cross-platform access
+  const fileName = path.basename(imagePath);
+  const targetPath = `/mnt/c/temp/${fileName}`;
+  const windowsPath = `C:\\temp\\${fileName}`;
+
   try {
     await execAsync(`mkdir -p /mnt/c/temp`);
-    const fileName = path.basename(imagePath);
-    const targetPath = `/mnt/c/temp/${fileName}`;
     await execAsync(`cp "${imagePath}" "${targetPath}"`);
   } catch (error) {
     throw new Error(`Failed to copy image file: ${error instanceof Error ? error.message : String(error)}`);
