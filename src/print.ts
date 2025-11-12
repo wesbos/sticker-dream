@@ -6,6 +6,13 @@ import * as os from "node:os";
 
 const execAsync = promisify(exec);
 
+// Detect platform (including WSL)
+const isWSL = process.platform === "linux" && (process.env.WSL_DISTRO_NAME !== undefined || process.env.WSLENV !== undefined);
+const isWindows = os.platform() === "win32" || isWSL;
+const isMac = os.platform() === "darwin";
+const isLinux = os.platform() === "linux" && !isWSL;
+
+
 /**
  * Represents a printer with its details
  */
@@ -35,10 +42,68 @@ export interface PrintOptions {
 }
 
 /**
- * Get a list of all available printers on macOS
+ * Get a list of all available printers on Windows using PowerShell
+ * @returns Array of printer objects
+ */
+async function getAllPrintersWindows(): Promise<Printer[]> {
+  try {
+    const psCommand = isWSL ? "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : "powershell.exe";
+    const command = `${psCommand} -Command "Get-Printer | Select-Object Name, PrinterStatus, PortName, DriverName, Shared, Published | ConvertTo-Json"`;
+    const { stdout } = await execAsync(command);
+
+    const printersData = JSON.parse(stdout);
+    const printers = Array.isArray(printersData) ? printersData : [printersData];
+
+    return printers.map((p: any) => ({
+      name: p.Name,
+      uri: p.PortName || "",
+      status: p.PrinterStatus || "unknown",
+      isDefault: false, // We'll determine this separately
+      isUSB: p.PortName && (p.PortName.includes("USB") || p.PortName.includes("USBPRINT")),
+      description: `${p.DriverName || "Unknown driver"} - Status: ${p.PrinterStatus || "Unknown"}`,
+    }));
+  } catch (error) {
+    throw new Error(
+      `Failed to get Windows printers: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Get the default printer on Windows
+ * @returns Default printer name or null
+ */
+async function getDefaultPrinterWindows(): Promise<string | null> {
+  try {
+    const psCommand = isWSL ? "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : "powershell.exe";
+    const command = `${psCommand} -Command "Get-WmiObject -Query \\"select Name from Win32_Printer where Default=True\\" | Select-Object -ExpandProperty Name"`;
+    const { stdout } = await execAsync(command);
+    return stdout.trim() || null;
+  } catch (error) {
+    console.warn("Could not get default printer:", error);
+    return null;
+  }
+}
+
+/**
+ * Get a list of all available printers
+ * Supports Windows (including WSL), macOS, and Linux
  * @returns Array of printer objects
  */
 export async function getAllPrinters(): Promise<Printer[]> {
+  if (isWindows) {
+    const printers = await getAllPrintersWindows();
+    const defaultPrinter = await getDefaultPrinterWindows();
+
+    return printers.map(p => ({
+      ...p,
+      isDefault: p.name === defaultPrinter
+    }));
+  }
+
+  // macOS/Linux CUPS implementation
   try {
     // Get printer names and status
     const { stdout: printerList } = await execAsync("lpstat -p -d");
@@ -110,19 +175,31 @@ export async function getUSBPrinters(): Promise<Printer[]> {
 
 /**
  * Check if a printer is accepting jobs (not paused/disabled)
+ * Cross-platform support for Windows, macOS, and Linux
  * @param printerName Name of the printer
  * @returns True if printer is enabled and accepting jobs
  */
 export async function isPrinterEnabled(printerName: string): Promise<boolean> {
   try {
-    const { stdout } = await execAsync(`lpstat -p "${printerName}"`);
+    if (isWindows) {
+      const psCommand = isWSL ? "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : "powershell.exe";
+      const command = `${psCommand} -Command "Get-Printer -Name '${printerName}' | Select-Object -ExpandProperty PrinterStatus"`;
+      const { stdout } = await execAsync(command);
+      const status = stdout.trim().toLowerCase();
 
-    // Check for disabled/paused states
-    const isDisabled =
-      stdout.toLowerCase().includes("disabled") ||
-      stdout.toLowerCase().includes("paused");
+      // In Windows, "normal" means the printer is ready
+      return status === "normal" || status === "idle";
+    } else {
+      // macOS/Linux CUPS implementation
+      const { stdout } = await execAsync(`lpstat -p "${printerName}"`);
 
-    return !isDisabled;
+      // Check for disabled/paused states
+      const isDisabled =
+        stdout.toLowerCase().includes("disabled") ||
+        stdout.toLowerCase().includes("paused");
+
+      return !isDisabled;
+    }
   } catch (error) {
     throw new Error(
       `Failed to check printer status: ${
@@ -134,18 +211,28 @@ export async function isPrinterEnabled(printerName: string): Promise<boolean> {
 
 /**
  * Enable/resume a printer that is paused or disabled
+ * Cross-platform support for Windows, macOS, and Linux
  * @param printerName Name of the printer to enable
  * @returns Success message
  */
 export async function enablePrinter(printerName: string): Promise<string> {
   try {
-    // Enable/resume the printer using cupsenable
-    await execAsync(`cupsenable "${printerName}"`);
+    if (isWindows) {
+      // On Windows, try to resume if paused
+      const psCommand = isWSL ? "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : "powershell.exe";
+      const command = `${psCommand} -Command "Resume-Printer -Name '${printerName}'"`;
+      await execAsync(command);
+      return `Printer "${printerName}" has been resumed and is now accepting jobs`;
+    } else {
+      // macOS/Linux CUPS implementation
+      // Enable/resume the printer using cupsenable
+      await execAsync(`cupsenable "${printerName}"`);
 
-    // Also accept jobs (in case it was rejecting)
-    await execAsync(`cupsaccept "${printerName}"`);
+      // Also accept jobs (in case it was rejecting)
+      await execAsync(`cupsaccept "${printerName}"`);
 
-    return `Printer "${printerName}" has been enabled and is now accepting jobs`;
+      return `Printer "${printerName}" has been enabled and is now accepting jobs`;
+    }
   } catch (error) {
     throw new Error(
       `Failed to enable printer: ${
@@ -240,7 +327,142 @@ async function validateImageFile(filePath: string): Promise<void> {
 }
 
 /**
- * Build the print command with options
+ * Print on Windows using PowerShell
+ */
+async function printImageWindows(
+  printerName: string,
+  imagePath: string,
+  options: PrintOptions = {}
+): Promise<string> {
+  // Copy image file to Windows temp location for cross-platform access
+  const fileName = path.basename(imagePath);
+  const targetPath = `/mnt/c/temp/${fileName}`;
+  const windowsPath = `C:\\temp\\${fileName}`;
+
+  try {
+    await execAsync(`mkdir -p /mnt/c/temp`);
+    await execAsync(`cp "${imagePath}" "${targetPath}"`);
+  } catch (error) {
+    throw new Error(`Failed to copy image file: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Use .NET PrintDocument optimized for thermal printers
+  const scriptContent = `
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+$printerName = "${printerName}"
+$imagePath = "${windowsPath}"
+
+
+# Check if printer exists
+$printer = Get-Printer -Name $printerName -ErrorAction SilentlyContinue
+if (-not $printer) {
+    throw "Printer '$printerName' not found"
+}
+
+
+# Check if image file exists
+if (-not (Test-Path $imagePath)) {
+    throw "Image file not found: $imagePath"
+}
+
+try {
+    # Use .NET PrintDocument with thermal printer optimizations
+    $printDoc = New-Object System.Drawing.Printing.PrintDocument
+    $printDoc.PrinterSettings.PrinterName = $printerName
+
+    # Set black and white printing
+    $printDoc.DefaultPageSettings.Color = $false
+
+    $printDoc.add_PrintPage({
+        param($sender, $e)
+
+        $image = [System.Drawing.Image]::FromFile($imagePath)
+
+        # Get page dimensions
+        $pageWidth = $e.PageBounds.Width
+        $pageHeight = $e.PageBounds.Height
+
+        # Calculate scaling to fit page while maintaining aspect ratio
+        $scaleX = $pageWidth / $image.Width
+        $scaleY = $pageHeight / $image.Height
+        $scale = [Math]::Min($scaleX, $scaleY)
+
+        $newWidth = [int]($image.Width * $scale)
+        $newHeight = [int]($image.Height * $scale)
+
+        # Center the image
+        $x = [int](($pageWidth - $newWidth) / 2)
+        $y = [int](($pageHeight - $newHeight) / 2)
+
+        # Draw image with high quality rendering for thermal printing
+        $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $e.Graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+        $e.Graphics.DrawImage($image, $x, $y, $newWidth, $newHeight)
+
+        $image.Dispose()
+    })
+
+    $printDoc.Print()
+    $printDoc.Dispose()
+
+    Write-Output "Print job submitted to $printerName"
+
+} catch {
+    Write-Output "Error: $($_.Exception.Message)"
+    throw $_
+}
+`;
+
+  // Write script to temp file in a Windows-accessible location
+  const timestamp = Date.now();
+  const scriptPath = `/tmp/print-script-${timestamp}.ps1`;
+  const windowsScriptPath = `C:\\temp\\print-script-${timestamp}.ps1`;
+
+  await fs.promises.writeFile(scriptPath, scriptContent);
+
+  // Copy script to Windows location for PowerShell execution
+  try {
+    await execAsync(`mkdir -p /mnt/c/temp`);
+    await execAsync(`cp "${scriptPath}" "/mnt/c/temp/print-script-${timestamp}.ps1"`);
+  } catch (error) {
+    throw new Error(`Failed to copy script to Windows location: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  try {
+    const psExe = isWSL ? "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : "powershell.exe";
+    const command = `${psExe} -ExecutionPolicy Bypass -File "${windowsScriptPath}"`;
+    const { stdout, stderr } = await execAsync(command);
+
+    if (stderr && !stderr.includes("Install the latest PowerShell")) {
+      console.warn("PowerShell warnings:", stderr);
+    }
+
+    // Clean up script files
+    try {
+      await fs.promises.unlink(scriptPath);
+      await fs.promises.unlink(`/mnt/c/temp/print-script-${timestamp}.ps1`);
+    } catch (e) { /* ignore */ }
+
+    return stdout.trim() || "Print job submitted";
+  } catch (error) {
+    // Clean up script files
+    try {
+      await fs.promises.unlink(scriptPath);
+      await fs.promises.unlink(`/mnt/c/temp/print-script-${timestamp}.ps1`);
+    } catch (e) { /* ignore */ }
+
+    throw new Error(
+      `Windows printing failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Build the print command with options (Unix/Linux/macOS)
  */
 function buildPrintCommand(
   printerName: string,
@@ -287,6 +509,7 @@ function buildPrintCommand(
 
 /**
  * Print an image to a specific printer
+ * Cross-platform support with optimizations for thermal printers on Windows
  * @param printerName Name of the printer to use
  * @param imagePathOrBuffer Path to the image file or a Buffer containing the image data
  * @param options Optional print settings
@@ -329,13 +552,22 @@ export async function printImage(
       throw new Error(`Printer not found: ${printerName}`);
     }
 
-    const command = buildPrintCommand(printerName, imagePath, options);
-    const { stdout } = await execAsync(command);
+    let jobId: string;
 
-    // Extract job ID from output
-    // Output format: "request id is PrinterName-JobID (1 file(s))"
-    const jobMatch = stdout.match(/request id is .+-(\d+)/);
-    const jobId = jobMatch ? jobMatch[1] : stdout.trim();
+    if (isWindows) {
+      // Use Windows PowerShell printing
+      const result = await printImageWindows(printerName, imagePath, options);
+      jobId = result;
+    } else {
+      // Use CUPS/lp for macOS/Linux
+      const command = buildPrintCommand(printerName, imagePath, options);
+      const { stdout } = await execAsync(command);
+
+      // Extract job ID from output
+      // Output format: "request id is PrinterName-JobID (1 file(s))"
+      const jobMatch = stdout.match(/request id is .+-(\d+)/);
+      jobId = jobMatch ? jobMatch[1] : stdout.trim();
+    }
 
     return jobId;
   } catch (error) {
