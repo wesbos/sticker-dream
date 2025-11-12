@@ -87,6 +87,9 @@ async function resetRecorder() {
       return;
     }
 
+    // Generate and display the image
+    await generateAndPrint(text);
+
     recordBtn.textContent = "Sending to Printer...";
     await wait(3000);
     recordBtn.textContent = "Printing...";
