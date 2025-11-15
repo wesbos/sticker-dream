@@ -1,0 +1,87 @@
+# OSX
+.DS_Store
+
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+ios/.xcode.env.local
+
+# Android/IntelliJ
+build/
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+.cxx/
+*.keystore
+!debug.keystore
+
+# node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# fastlane
+*/fastlane/report.xml
+*/fastlane/Preview.html
+*/fastlane/screenshots
+*/fastlane/test_output
+
+# Bundle artifacts
+*.jsbundle
+
+# CocoaPods
+ios/Pods/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Temporary files
+*.swp
+*.swo
+*~
+.tmp/
+.cache/
+
+# Generated files
+*.log
+*.tgz
+
+# Whisper model (too large for git)
+assets/models/ggml-*.bin
+
+# Sound files (can be large)
+assets/sounds/*.mp3
+assets/sounds/*.wav
+assets/sounds/*.m4a
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.vscode/
+.idea/
