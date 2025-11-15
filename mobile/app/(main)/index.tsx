@@ -400,7 +400,7 @@ export default function MainScreen() {
             marginBottom: 24,
           }}
         >
-          <View>
+          <View style={{ flex: 1 }}>
             <Text
               style={{
                 fontSize: 18,
@@ -422,20 +422,37 @@ export default function MainScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={handleSignOut}
-            activeOpacity={0.7}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: THEME.secondary,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 20 }}>👤</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => router.push('/(main)/settings')}
+              activeOpacity={0.7}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: THEME.tertiary,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 20 }}>⚙️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleSignOut}
+              activeOpacity={0.7}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: THEME.secondary,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 20 }}>👤</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Printer Status Card */}

@@ -12,6 +12,7 @@ import {
   AuthState,
 } from '../services/auth.service';
 import { initWhisper } from '../services/whisper.service';
+import { initLanguageService, isFirstLaunch } from '../services/language.service';
 
 // Keep splash screen visible while we load
 SplashScreen.preventAutoHideAsync();
@@ -59,16 +60,34 @@ export default function RootLayout() {
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSplashReady, setIsSplashReady] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Initialize auth and services
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        // Initialize language service first
+        await initLanguageService();
+
+        // Check if first launch
+        const firstLaunch = await isFirstLaunch();
+        setShowWelcome(firstLaunch);
+
         // Initialize Google Sign-In
         await initGoogleSignIn();
 
-        // Initialize Whisper service
-        await initWhisper();
+        // Initialize Whisper service (will use selected language model)
+        try {
+          await initWhisper();
+        } catch (whisperError) {
+          // If Whisper fails to initialize (e.g., model not downloaded),
+          // we'll show welcome screen to download model
+          console.warn('Whisper initialization failed:', whisperError);
+          if (!firstLaunch) {
+            // Only set showWelcome if not already set
+            setShowWelcome(true);
+          }
+        }
 
         // Restore previous session if available
         const state = await getAuthState();
@@ -143,8 +162,17 @@ export default function RootLayout() {
             gestureEnabled: true,
           }}
         >
-          {/* Auth stack - shown when user is not signed in */}
-          {!authState?.isSignedIn ? (
+          {/* Welcome screen - shown on first launch or when model is missing */}
+          {showWelcome && authState?.isSignedIn ? (
+            <Stack.Screen
+              name="welcome"
+              options={{
+                title: 'Welcome',
+                animationTypeForReplace: 'push',
+              }}
+            />
+          ) : !authState?.isSignedIn ? (
+            // Auth stack - shown when user is not signed in
             <Stack.Screen
               name="index"
               options={{

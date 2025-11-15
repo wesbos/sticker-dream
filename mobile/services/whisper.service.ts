@@ -1,6 +1,7 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { Whisper } from 'whisper.rn';
+import { getCurrentModelFilename, isModelDownloaded, getLanguage } from './language.service';
 
 /**
  * Transcription result from Whisper speech-to-text processing
@@ -62,34 +63,68 @@ class WhisperService {
     startTime: 0,
   };
   private isInitialized: boolean = false;
+  private currentModelFilename: string | null = null;
   private readonly abortWords = new Set<string>(['BLANK', 'NO IMAGE', 'NO STICKER', 'CANCEL', 'ABORT', 'START OVER']);
 
   /**
-   * Initialize Whisper with the tiny English model
+   * Initialize Whisper with the currently selected language model
    * This should be called once on app startup
    *
    * @returns Promise that resolves when initialization is complete
    * @throws Error if initialization fails
    */
   async initWhisper(): Promise<void> {
-    if (this.isInitialized && this.whisper) {
-      return;
-    }
-
     try {
-      // Initialize Whisper with tiny English model
+      // Get current language preference
+      const modelFilename = await getCurrentModelFilename();
+
+      // If already initialized with the same model, skip re-initialization
+      if (this.isInitialized && this.whisper && this.currentModelFilename === modelFilename) {
+        return;
+      }
+
+      // Check if model is downloaded
+      const languagePreference = await getLanguage();
+      const modelDownloaded = await isModelDownloaded(languagePreference.modelType);
+
+      if (!modelDownloaded) {
+        throw new Error(
+          `Model not found: ${modelFilename}. Please download the model in Settings.`
+        );
+      }
+
+      // Initialize Whisper with selected model
       this.whisper = new Whisper({
-        model: 'ggml-tiny.en.bin',
+        model: modelFilename,
       });
 
+      this.currentModelFilename = modelFilename;
       this.isInitialized = true;
     } catch (error) {
       this.isInitialized = false;
       this.whisper = null;
+      this.currentModelFilename = null;
       throw new Error(
         `Failed to initialize Whisper: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  /**
+   * Reload Whisper with a different model
+   * Call this after changing language in settings
+   *
+   * @returns Promise that resolves when reload is complete
+   * @throws Error if reload fails
+   */
+  async reloadModel(): Promise<void> {
+    // Reset initialization state to force reload
+    this.isInitialized = false;
+    this.whisper = null;
+    this.currentModelFilename = null;
+
+    // Re-initialize with new model
+    await this.initWhisper();
   }
 
   /**
@@ -528,6 +563,20 @@ export function isRecording(): boolean {
  */
 export async function cancelRecording(): Promise<void> {
   return whisperService.cancelRecording();
+}
+
+/**
+ * Reload Whisper model (call after changing language)
+ *
+ * @returns Promise that resolves when model is reloaded
+ *
+ * @example
+ * ```typescript
+ * await reloadModel();
+ * ```
+ */
+export async function reloadModel(): Promise<void> {
+  return whisperService.reloadModel();
 }
 
 /**

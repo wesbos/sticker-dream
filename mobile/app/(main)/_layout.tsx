@@ -64,6 +64,15 @@ export default function MainLayout() {
           animationTypeForReplace: 'slide_from_right',
         }}
       />
+
+      {/* Settings screen */}
+      <Stack.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          animationTypeForReplace: 'slide_from_right',
+        }}
+      />
     </Stack>
   );
 }

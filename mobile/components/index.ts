@@ -16,3 +16,4 @@ export { ImagePreview } from './ImagePreview';
 export { TranscriptDisplay } from './TranscriptDisplay';
 export { PrinterStatus, type PrinterInfo } from './PrinterStatus';
 export { default as RecordButton, type RecordButtonState, type RecordButtonProps } from './RecordButton';
+export { default as LanguageSelector } from './LanguageSelector';
