@@ -43,7 +43,13 @@ pnpm dev
 
 Open `http://localhost:5173`.
 
-To use your phone, you'll need to visit the page on your local network. Since it uses microphone access, this needs to be a secure origin. I use Cloudflare tunnels for this.
+To use your phone, you'll need a secure origin (HTTPS) for microphone access. Use ngrok:
+
+```bash
+ngrok http 5173
+```
+
+Then open the ngrok URL on your phone.
 
 ## Printers
 
