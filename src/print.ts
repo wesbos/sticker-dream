@@ -369,6 +369,13 @@ export async function printToUSB(
   imagePathOrBuffer: string | Buffer,
   options: PrintOptions = {}
 ): Promise<{ printerName: string; jobId: string }> {
+  // Check if running in WSL
+  const isWSL = os.release().toLowerCase().includes("microsoft");
+
+  if (isWSL) {
+    return printToWindowsFromWSL(imagePathOrBuffer);
+  }
+
   const usbPrinters = await getUSBPrinters();
 
   if (usbPrinters.length === 0) {
@@ -384,6 +391,57 @@ export async function printToUSB(
     printerName: printer.name,
     jobId,
   };
+}
+
+/**
+ * Print from WSL using Windows printer
+ */
+async function printToWindowsFromWSL(
+  imagePathOrBuffer: string | Buffer
+): Promise<{ printerName: string; jobId: string }> {
+  let imagePath: string;
+  let tempFilePath: string | null = null;
+  const printerName = "PM-241-BT";
+
+  console.log("[WSL Print] Starting print job...");
+  console.log("[WSL Print] os.release():", os.release());
+
+  // Save to Windows-accessible temp location
+  if (Buffer.isBuffer(imagePathOrBuffer)) {
+    const timestamp = Date.now();
+    tempFilePath = `/mnt/c/temp/sticker-${timestamp}.png`;
+    await fs.promises.mkdir("/mnt/c/temp", { recursive: true });
+    await fs.promises.writeFile(tempFilePath, imagePathOrBuffer);
+    imagePath = tempFilePath;
+    console.log("[WSL Print] Saved buffer to:", tempFilePath);
+  } else {
+    imagePath = imagePathOrBuffer;
+    console.log("[WSL Print] Using existing file:", imagePath);
+  }
+
+  // Convert WSL path to Windows path
+  const winPath = imagePath.replace(/^\/mnt\/([a-z])/, "$1:").replace(/\//g, "\\");
+  console.log("[WSL Print] Windows path:", winPath);
+
+  // Print using PowerShell to specific printer via rundll32
+  const cmd = `/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -Command "rundll32 C:\\\\Windows\\\\System32\\\\shimgvw.dll,ImageView_PrintTo '${winPath}' '${printerName}'"`;
+  console.log("[WSL Print] Executing:", cmd);
+  
+  const { stdout, stderr } = await execAsync(cmd);
+  console.log("[WSL Print] stdout:", stdout);
+  console.log("[WSL Print] stderr:", stderr);
+
+  // Cleanup after a delay (give Windows time to spool)
+  if (tempFilePath) {
+    console.log("[WSL Print] File saved at:", tempFilePath, "(will delete in 10s)");
+    setTimeout(async () => {
+      try {
+        await fs.promises.unlink(tempFilePath!);
+      } catch {}
+    }, 10000);
+  }
+
+  return { printerName, jobId: "wsl-print" };
 }
 
 /**
